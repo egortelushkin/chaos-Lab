@@ -14,6 +14,7 @@
             <option value="$PROJECT_DIR$/chaos-http" />
             <option value="$PROJECT_DIR$/chaos-kafka" />
             <option value="$PROJECT_DIR$/chaos-spring" />
+            <option value="$PROJECT_DIR$/chaos-spring-starter" />
           </set>
         </option>
       </GradleProjectSettings>
