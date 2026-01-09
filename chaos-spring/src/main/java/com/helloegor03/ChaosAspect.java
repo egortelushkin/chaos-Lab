@@ -14,6 +14,7 @@ public class ChaosAspect {
 
         var scenario = ChaosScenarios.get(chaosify.scenario());
         if (scenario != null) {
+            System.out.println("Applying chaos scenario: " + chaosify.scenario());
             scenario.unleash();
         }
 

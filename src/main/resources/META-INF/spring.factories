@@ -1,2 +1,0 @@
-org.springframework.boot.autoconfigure.EnableAutoConfiguration=\
-com.helloegor03.starter.ChaosAutoConfiguration

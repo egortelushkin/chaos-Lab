@@ -25,4 +25,8 @@ public class ChaosScenario {
     public String getName() {
         return name;
     }
+
+    public ChaosEngine getEngine() {
+        return engine;
+    }
 }

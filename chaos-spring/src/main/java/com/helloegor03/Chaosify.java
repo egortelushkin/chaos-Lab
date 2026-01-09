@@ -8,5 +8,5 @@ import java.lang.annotation.Target;
 @Target(ElementType.METHOD)
 @Retention(RetentionPolicy.RUNTIME)
 public @interface Chaosify {
-    String scenario() default "default";
+    String scenario() default "DefaultChaosScenario";
 }
