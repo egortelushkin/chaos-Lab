@@ -19,9 +19,7 @@ public class ChaosScenario {
     }
 
     public void unleash() {
-        if (enabled) {
-            engine.unleash();
-        }
+        if (enabled) engine.unleash();
     }
 
     public String getName() {

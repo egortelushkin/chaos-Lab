@@ -1,5 +1,7 @@
 package com.helloegor03;
 
+import java.util.function.DoubleSupplier;
+
 public class EffectBuilder {
     private final ChaosBuilder parent;
     private final ChaosEffect effect;
@@ -14,6 +16,11 @@ public class EffectBuilder {
 
     public ChaosBuilder probability(double probability) {
         parent.addRule(probability, effect);
+        return parent;
+    }
+
+    public ChaosBuilder dynamicProbability(DoubleSupplier dynamicProbability) {
+        parent.addRule(dynamicProbability, effect);
         return parent;
     }
 }

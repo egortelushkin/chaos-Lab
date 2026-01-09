@@ -2,6 +2,7 @@ package com.helloegor03;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
 
 public class ChaosEngine {
 
@@ -13,14 +14,20 @@ public class ChaosEngine {
     }
 
     public void unleash() {
+        List<CompletableFuture<Void>> futures = new ArrayList<>();
         for (ChaosRule rule : rules) {
             if (rule.shouldApply()) {
-                try {
-                    rule.apply();
-                } catch (Exception e) {
-                    throw new RuntimeException(e);
-                }
+                System.out.println("Applying chaos: " + rule.getEffect().getClass().getSimpleName());
+                futures.add(CompletableFuture.runAsync(() -> {
+                    try {
+                        rule.apply();
+                    } catch (Exception e) {
+                        throw new RuntimeException(e);
+                    }
+                }));
             }
         }
+        // Ждём, пока все эффекты завершатся
+        futures.forEach(CompletableFuture::join);
     }
 }

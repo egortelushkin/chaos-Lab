@@ -1,5 +1,6 @@
 package com.helloegor03;
 
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ThreadLocalRandom;
 
 public class DelayEffect implements ChaosEffect {
@@ -11,8 +12,12 @@ public class DelayEffect implements ChaosEffect {
     }
 
     @Override
-    public void apply() throws InterruptedException {
+    public void apply() {
         int delay = ThreadLocalRandom.current().nextInt(maxDelayMs);
-        Thread.sleep(delay);
+        CompletableFuture.runAsync(() -> {
+            try {
+                Thread.sleep(delay);
+            } catch (InterruptedException ignored) {}
+        });
     }
 }
