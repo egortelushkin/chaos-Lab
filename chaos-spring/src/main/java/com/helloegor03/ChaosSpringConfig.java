@@ -23,7 +23,7 @@ public class ChaosSpringConfig {
                 .exception().probability(0.2)
                 .scenario("StressChaos");
 
-        // кастомные эффекты через ChaosRule
+        // custom effect for chaosRule
         scenario.getEngine().addRule(new ChaosRule(1.0, new CpuSpikeEffect(100)));
         scenario.getEngine().addRule(new ChaosRule(1.0, new MemoryLeakEffect(1024*1024*5)));
         scenario.getEngine().addRule(new ChaosRule(0.3, new PartialExceptionEffect(0.3)));

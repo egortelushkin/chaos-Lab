@@ -12,7 +12,7 @@ public class CpuSpikeEffect implements ChaosEffect {
     public void apply() {
         long end = System.currentTimeMillis() + durationMs;
         while (System.currentTimeMillis() < end) {
-            Math.pow(Math.random(), Math.random()); // простая нагрузка на CPU
+            Math.pow(Math.random(), Math.random()); // load for CPU
         }
     }
 }
