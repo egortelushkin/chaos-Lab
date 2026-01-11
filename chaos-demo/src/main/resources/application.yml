@@ -1,0 +1,24 @@
+server:
+  port: 8080
+
+chaos:
+  scenarios:
+    default:
+      enabled: true
+      delay:
+        probability: 0.3
+        max-ms: 500
+      exception:
+        probability: 0.1
+
+    stress:
+      enabled: true
+      delay:
+        probability: 0.7
+        max-ms: 1500
+      exception:
+        probability: 0.3
+      cpu-spike:
+        duration-ms: 200
+      memory-leak:
+        bytes: 5242880
