@@ -13,9 +13,10 @@ public class ChaosAspect {
     @Around("@annotation(chaosify)")
     public Object applyChaos(ProceedingJoinPoint joinPoint, Chaosify chaosify) throws Throwable {
 
-        var scenario = ChaosScenarios.get(chaosify.scenario());
+        System.out.println("🔥 CHAOS triggered: " + chaosify.scenario());
+
+        ChaosScenario scenario = ChaosScenarios.get(chaosify.scenario());
         if (scenario != null) {
-            System.out.println("Applying chaos scenario: " + chaosify.scenario());
             scenario.unleash();
         }
 

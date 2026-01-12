@@ -29,6 +29,8 @@ dependencies {
     // OpenAPI
     implementation("org.springdoc:springdoc-openapi-starter-webmvc-ui:2.6.0")
 
+    testImplementation("org.springframework.boot:spring-boot-starter-test")
+
 
 }
 
