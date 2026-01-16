@@ -5,7 +5,7 @@ plugins {
 }
 
 
-group = "com.helloegor03"
+group = "com.chaosLab"
 version = "1.0-SNAPSHOT"
 
 java {

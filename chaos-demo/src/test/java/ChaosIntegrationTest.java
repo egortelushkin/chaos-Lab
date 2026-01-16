@@ -1,7 +1,7 @@
 
 
-import com.helloegor03.ChaosDemoApplication;
-import com.helloegor03.DemoService;
+import com.chaosLab.ChaosDemoApplication;
+import com.chaosLab.DemoService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;

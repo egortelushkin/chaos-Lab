@@ -4,7 +4,7 @@ plugins {
     id("io.spring.dependency-management") version "1.1.4"
 }
 
-group = "com.helloegor03"
+group = "com.chaosLab"
 version = "1.0-SNAPSHOT"
 
 java {

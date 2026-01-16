@@ -33,7 +33,7 @@ Or if published to Maven:
 
 ```
 <dependency>
-    <groupId>com.helloegor03</groupId>
+    <groupId>com.chaosLab</groupId>
     <artifactId>chaos-spring-starter</artifactId>
     <version>1.0.0</version>
 </dependency>
@@ -76,9 +76,10 @@ bytes: 5242880
 
 ### 3. Annotate Methods with @Chaosify
 Annotate any Spring-managed method where you want to inject chaos:
+
 ```java
-import com.helloegor03.chaosspringstarter.annotation.Chaosify;
-import org.springframework.stereotype.Service;  
+import com.chaosLab.chaosspringstarter.annotation.Chaosify;
+import org.springframework.stereotype.Service;
 
 @Service
 public class UserService {

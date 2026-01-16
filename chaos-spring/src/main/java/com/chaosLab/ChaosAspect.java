@@ -1,0 +1,25 @@
+package com.chaosLab;
+
+
+import org.aspectj.lang.ProceedingJoinPoint;
+import org.aspectj.lang.annotation.Around;
+import org.aspectj.lang.annotation.Aspect;
+import org.springframework.stereotype.Component;
+
+@Aspect
+@Component
+public class ChaosAspect {
+
+    @Around("@annotation(chaosify)")
+    public Object applyChaos(ProceedingJoinPoint joinPoint, Chaosify chaosify) throws Throwable {
+
+        System.out.println("🔥 CHAOS triggered: " + chaosify.scenario());
+
+        ChaosScenario scenario = ChaosScenarios.get(chaosify.scenario());
+        if (scenario != null) {
+            scenario.unleash();
+        }
+
+        return joinPoint.proceed();
+    }
+}

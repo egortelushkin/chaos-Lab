@@ -2,7 +2,7 @@ plugins {
     id("java-library")
 }
 
-group = "com.helloegor03"
+group = "com.chaosLab"
 version = "0.1.0"
 
 repositories {

@@ -20,8 +20,9 @@ It helps you simulate delays, exceptions, and other failure scenarios to test sy
 Include the library in your Maven or Gradle project (assuming you publish it to your own repository):
 
 ```xml
+
 <dependency>
-    <groupId>com.helloegor03</groupId>
+    <groupId>com.chaosLabcom.chaosLab</groupId>
     <artifactId>chaos-core</artifactId>
     <version>1.0.0</version>
 </dependency>
@@ -29,35 +30,41 @@ Include the library in your Maven or Gradle project (assuming you publish it to 
 
 Or for Gradle:
 ```xml
-implementation 'com.helloegor03:chaos-core:1.0.0'
+implementation 'com.chaosLab:chaos-core:1.0.0'
 ```
 
 Usage
 Basic Chaos Engine
 
 ```java
-import com.helloegor03.*;
+import com.chaosLab.*;
 
 ChaosEngine engine = Chaos.builder()
-                          .delay(500).probability(0.3)   // 30% chance of delay up to 500ms
-                          .exception().probability(0.1) // 10% chance of throwing an exception
-                          .build();
+        .delay(500).probability(0.3)   // 30% chance of delay up to 500ms
+        .exception().probability(0.1) // 10% chance of throwing an exception
+        .build();
 
-engine.unleash(); // Apply all chaos rules
+engine.
+
+unleash(); // Apply all chaos rules
 ```
 
 Using Chaos Scenarios
 
 ```java
-import com.helloegor03.*;
+import com.chaosLab.*;
 
 ChaosScenario scenario = Chaos.builder()
-                              .delay(200).probability(0.5)
-                              .exception().probability(0.1)
-                              .scenario("ResilienceTest");
+        .delay(200).probability(0.5)
+        .exception().probability(0.1)
+        .scenario("ResilienceTest");
 
-ChaosScenarios.register(scenario); // Register globally
-scenario.unleash(); // Apply chaos if scenario is enabled
+ChaosScenarios.
+
+register(scenario); // Register globally
+scenario.
+
+unleash(); // Apply chaos if scenario is enabled
 ```
 
 Enable or disable scenarios dynamically:

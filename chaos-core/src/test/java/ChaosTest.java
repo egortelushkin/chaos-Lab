@@ -1,6 +1,6 @@
-import com.helloegor03.Chaos;
-import com.helloegor03.ChaosEngine;
-import com.helloegor03.ChaosScenario;
+import com.chaosLab.Chaos;
+import com.chaosLab.ChaosEngine;
+import com.chaosLab.ChaosScenario;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.*;
