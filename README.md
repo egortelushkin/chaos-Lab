@@ -3,10 +3,9 @@
 <!-- ========================= -->
 
 <p align="center">
-  <img src="docs/logo.png" alt="ChaosLab Logo" width="200"/>
+  <img src="docs/logo (2).png" alt="ChaosLab Logo" width="500"/>
 </p>
 
-<h1 align="center">ChaosLab ☄️</h1>
 
 <p align="center">
   Lightweight Chaos Engineering library for Spring Boot
