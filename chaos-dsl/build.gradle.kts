@@ -3,7 +3,7 @@ plugins {
 }
 
 group = "com.chaosLab"
-version = "0.1.0"
+version = "1.0-SNAPSHOT"
 
 java {
     toolchain {
@@ -17,9 +17,7 @@ repositories {
 
 dependencies {
     api(project(":chaos-core"))
-
-    api(platform("org.springframework:spring-framework-bom:6.1.5"))
-    api("org.springframework:spring-webflux")
+    implementation("org.yaml:snakeyaml:2.2")
 
     testImplementation(platform("org.junit:junit-bom:5.10.0"))
     testImplementation("org.junit.jupiter:junit-jupiter")

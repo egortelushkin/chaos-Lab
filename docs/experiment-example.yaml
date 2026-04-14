@@ -1,0 +1,42 @@
+experiment:
+  name: checkout_resilience
+  seed: 42
+
+load:
+  virtualUsers: 10
+  workerThreads: 4
+  thinkTimeMs: 5
+
+phases:
+  - name: warmup
+    type: WARMUP
+    durationMs: 1000
+  - name: fault
+    type: FAULT
+    durationMs: 2000
+  - name: recovery
+    type: RECOVERY
+    durationMs: 1000
+
+fault:
+  delayMaxMs: 30
+  delayProbability: 0.25
+  exceptionProbability: 0.05
+  mode: PARALLEL
+  seed: 100
+
+invariants:
+  maxErrorRate: 0.03
+  maxP95LatencyMs: 200
+
+users:
+  steps:
+    - operation: login
+      latencyMs: 5
+      successRate: 1.0
+    - operation: add_to_cart
+      latencyMs: 10
+      successRate: 0.995
+    - operation: checkout
+      latencyMs: 15
+      successRate: 0.99
