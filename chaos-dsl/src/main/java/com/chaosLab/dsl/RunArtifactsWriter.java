@@ -78,7 +78,8 @@ final class RunArtifactsWriter {
             String dslSha256,
             boolean gateEnforced,
             ChaosExperiment experiment,
-            ExperimentReport report
+            ExperimentReport report,
+            List<PrometheusObservability.PrometheusCheckResult> prometheusChecks
     ) {
         Objects.requireNonNull(metadataPath, "metadataPath must not be null");
         Objects.requireNonNull(dslPath, "dslPath must not be null");
@@ -86,6 +87,7 @@ final class RunArtifactsWriter {
         Objects.requireNonNull(dslSha256, "dslSha256 must not be null");
         Objects.requireNonNull(experiment, "experiment must not be null");
         Objects.requireNonNull(report, "report must not be null");
+        Objects.requireNonNull(prometheusChecks, "prometheusChecks must not be null");
 
         ChaosEngine faultEngine = experiment.getFaultEngine();
         Long faultSeed = faultEngine == null ? null : faultEngine.getRandomSeed();
@@ -109,6 +111,7 @@ final class RunArtifactsWriter {
         appendNumberField(json, "duplicateOrderIds", report.getMetrics().getDuplicateOrderIds()).append(",");
         appendStringListField(json, "faultTargetOperations", experiment.getFaultTargetOperations().stream().toList()).append(",");
         appendStringListField(json, "failedInvariants", failedInvariants).append(",");
+        appendPrometheusChecksField(json, "prometheusChecks", prometheusChecks).append(",");
         appendNumberField(json, "executionErrorCount", report.getExecutionErrors().size());
         json.append("}");
 
@@ -172,6 +175,41 @@ final class RunArtifactsWriter {
         for (int i = 0; i < values.size(); i++) {
             json.append("\"").append(escape(values.get(i))).append("\"");
             if (i < values.size() - 1) {
+                json.append(",");
+            }
+        }
+        json.append("]");
+        return json;
+    }
+
+    private static StringBuilder appendPrometheusChecksField(
+            StringBuilder json,
+            String name,
+            List<PrometheusObservability.PrometheusCheckResult> checks
+    ) {
+        json.append("\"").append(escape(name)).append("\":");
+        json.append("[");
+        for (int i = 0; i < checks.size(); i++) {
+            PrometheusObservability.PrometheusCheckResult checkResult = checks.get(i);
+            PrometheusObservability.PrometheusCheckDefinition definition = checkResult.definition();
+            json.append("{");
+            appendStringField(json, "name", definition.name()).append(",");
+            appendStringField(json, "query", definition.query()).append(",");
+            appendStringField(json, "operator", definition.operator().symbol()).append(",");
+            appendNumberField(json, "threshold", definition.threshold()).append(",");
+            if (Double.isNaN(checkResult.actualValue())) {
+                json.append("\"actualValue\":null,");
+            } else {
+                appendNumberField(json, "actualValue", checkResult.actualValue()).append(",");
+            }
+            appendBooleanField(json, "passed", checkResult.passed()).append(",");
+            if (checkResult.error() == null) {
+                appendStringField(json, "error", "");
+            } else {
+                appendStringField(json, "error", checkResult.error());
+            }
+            json.append("}");
+            if (i < checks.size() - 1) {
                 json.append(",");
             }
         }

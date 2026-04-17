@@ -30,6 +30,20 @@ invariants:
   maxP95LatencyMs: 800
   noDuplicateOrderIds: true
 
+observability:
+  prometheus:
+    baseUrl: http://localhost:9090
+    timeoutMs: 5000
+    checks:
+      - name: payment_error_rate_prom
+        query: checkout_payment_error_rate
+        operator: <=
+        threshold: 0.03
+      - name: checkout_p95_latency_prom
+        query: checkout_p95_latency_ms
+        operator: <=
+        threshold: 800
+
 users:
   steps:
     - operation: create_order

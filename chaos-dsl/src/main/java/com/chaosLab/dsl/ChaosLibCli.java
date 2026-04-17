@@ -4,8 +4,12 @@ import com.chaosLab.ChaosCiGate;
 import com.chaosLab.ChaosExperiment;
 import com.chaosLab.ExperimentReport;
 import com.chaosLab.ExperimentReportJson;
+import com.chaosLab.ExperimentStatus;
 import com.chaosLab.InvariantResult;
 
+import java.math.BigDecimal;
+import java.math.RoundingMode;
+import java.util.ArrayList;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Objects;
@@ -33,9 +37,14 @@ public final class ChaosLibCli {
         Path resolvedDslPath = RunArtifactsWriter.resolveDslPath(options.dslPath);
         String yamlText = RunArtifactsWriter.readDslYaml(resolvedDslPath);
         String dslSha256 = RunArtifactsWriter.sha256(yamlText);
+        PrometheusObservability.PrometheusConfig prometheusConfig = PrometheusObservability.parseFromYaml(yamlText);
 
         ChaosExperiment experiment = ChaosDsl.fromYaml(yamlText);
         ExperimentReport report = experiment.run();
+        List<PrometheusObservability.PrometheusCheckResult> prometheusChecks = prometheusConfig == null
+                ? List.of()
+                : PrometheusObservability.evaluate(prometheusConfig);
+        report = mergePrometheusChecks(report, prometheusChecks);
 
         Path reportPath = resolveReportPath(options);
         ExperimentReportJson.writeJson(report, reportPath);
@@ -53,11 +62,12 @@ public final class ChaosLibCli {
                     dslSha256,
                     options.enforceGate,
                     experiment,
-                    report
+                    report,
+                    prometheusChecks
             );
         }
 
-        printSummary(report, reportPath, snapshotPath, metadataPath);
+        printSummary(report, reportPath, snapshotPath, metadataPath, prometheusChecks);
 
         if (options.enforceGate) {
             try {
@@ -84,7 +94,8 @@ public final class ChaosLibCli {
             ExperimentReport report,
             Path reportPath,
             Path snapshotPath,
-            Path metadataPath
+            Path metadataPath,
+            List<PrometheusObservability.PrometheusCheckResult> prometheusChecks
     ) {
         StringBuilder summary = new StringBuilder();
         summary.append("Chaos run finished: ")
@@ -97,6 +108,11 @@ public final class ChaosLibCli {
         if (metadataPath != null) {
             summary.append(", metadata=").append(metadataPath);
         }
+        if (!prometheusChecks.isEmpty()) {
+            long failedPrometheusChecks = prometheusChecks.stream().filter(result -> !result.passed()).count();
+            summary.append(", prometheusChecks=").append(prometheusChecks.size());
+            summary.append(", failedPrometheusChecks=").append(failedPrometheusChecks);
+        }
         if (!report.isPassed()) {
             List<String> failedInvariants = report.getInvariantResults().stream()
                     .filter(result -> !result.isPassed())
@@ -106,6 +122,53 @@ public final class ChaosLibCli {
             summary.append(", executionErrors=").append(report.getExecutionErrors().size());
         }
         System.out.println(summary);
+    }
+
+    private static ExperimentReport mergePrometheusChecks(
+            ExperimentReport original,
+            List<PrometheusObservability.PrometheusCheckResult> prometheusChecks
+    ) {
+        if (prometheusChecks.isEmpty()) {
+            return original;
+        }
+
+        List<InvariantResult> mergedInvariantResults = new ArrayList<>(original.getInvariantResults());
+        int failedPrometheusChecks = 0;
+        for (PrometheusObservability.PrometheusCheckResult prometheusCheck : prometheusChecks) {
+            InvariantResult invariantResult = PrometheusObservability.toInvariantResult(prometheusCheck);
+            mergedInvariantResults.add(invariantResult);
+            if (!invariantResult.isPassed()) {
+                failedPrometheusChecks++;
+            }
+        }
+
+        boolean allInvariantsPassed = mergedInvariantResults.stream().allMatch(InvariantResult::isPassed);
+        boolean noExecutionErrors = original.getExecutionErrors().isEmpty();
+        ExperimentStatus status = allInvariantsPassed && noExecutionErrors ? ExperimentStatus.PASS : ExperimentStatus.FAIL;
+
+        double adjustedScore = original.getResilienceScore();
+        if (failedPrometheusChecks > 0) {
+            adjustedScore = clampAndRound(adjustedScore - failedPrometheusChecks * 15.0);
+        }
+
+        return new ExperimentReport(
+                original.getExperimentName(),
+                original.getStartedAt(),
+                original.getFinishedAt(),
+                status,
+                original.getMetrics(),
+                adjustedScore,
+                original.getPhaseReports(),
+                mergedInvariantResults,
+                original.getExecutionErrors()
+        );
+    }
+
+    private static double clampAndRound(double value) {
+        double clamped = Math.max(0.0, Math.min(100.0, value));
+        return BigDecimal.valueOf(clamped)
+                .setScale(2, RoundingMode.HALF_UP)
+                .doubleValue();
     }
 
     private static final class CliOptions {

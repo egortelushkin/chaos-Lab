@@ -116,3 +116,32 @@ Supported HTTP step fields:
 - `capture`: map `sessionKey -> jsonPath` from response body
 - `emitOrderIdFromSession` or `emitOrderIdJsonField` for `noDuplicateOrderIds`
 - JSON path supports `field.subfield`, array indexes (`items[0].id`), or JSON Pointer (`/field/subfield`)
+
+## Prometheus/Grafana integration
+
+You can add Prometheus checks directly in DSL.  
+If Grafana is used with Prometheus datasource, the same metrics/queries will match dashboards.
+
+```yaml
+observability:
+  prometheus:
+    baseUrl: http://localhost:9090
+    timeoutMs: 5000
+    checks:
+      - name: error_rate_prom
+        query: demo_error_rate
+        operator: <=
+        threshold: 0.03
+      - name: p95_latency_prom
+        query: demo_p95_latency_ms
+        operator: <=
+        threshold: 800
+```
+
+Supported operators: `<`, `<=`, `>`, `>=`, `==`, `!=`.
+
+Prometheus checks are:
+- evaluated after experiment run,
+- added to `invariantResults` in `report.json`,
+- included in `run-metadata.json`,
+- enforced by gate (non-zero exit code on failure).

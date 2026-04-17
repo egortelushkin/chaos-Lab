@@ -365,6 +365,74 @@ class ChaosDslTest {
         }
     }
 
+    @Test
+    void testChaosLibCliPrometheusCheckAffectsGateAndReport() throws Exception {
+        HttpServer prometheus = HttpServer.create(new InetSocketAddress(0), 0);
+        prometheus.setExecutor(Executors.newCachedThreadPool());
+        prometheus.createContext("/api/v1/query", exchange -> {
+            String body = """
+                    {
+                      "status":"success",
+                      "data":{
+                        "resultType":"vector",
+                        "result":[
+                          {"metric":{"job":"demo"},"value":[1713380000,"0.07"]}
+                        ]
+                      }
+                    }
+                    """;
+            writeJson(exchange, 200, body);
+        });
+        prometheus.start();
+        try {
+            int port = prometheus.getAddress().getPort();
+            String yaml = """
+                    experiment:
+                      name: prometheus_gate
+                    load:
+                      virtualUsers: 1
+                      workerThreads: 1
+                    phases:
+                      - name: fault
+                        type: FAULT
+                        durationMs: 80
+                    invariants:
+                      maxErrorRate: 1.0
+                    observability:
+                      prometheus:
+                        baseUrl: http://localhost:%d
+                        checks:
+                          - name: error_rate_prom
+                            query: demo_error_rate
+                            operator: <=
+                            threshold: 0.03
+                    users:
+                      steps:
+                        - operation: stable
+                          successRate: 1.0
+                    """.formatted(port);
+
+            Path dslFile = Files.createTempFile("chaos-prom-", ".yaml");
+            Files.writeString(dslFile, yaml);
+
+            Path reportFile = Files.createTempFile("chaos-prom-report-", ".json");
+            int exitCode = ChaosLibCli.execute(new String[]{
+                    "run",
+                    dslFile.toString(),
+                    "--report",
+                    reportFile.toString()
+            });
+
+            assertEquals(1, exitCode);
+            String reportJson = Files.readString(reportFile);
+            assertTrue(reportJson.contains("\"status\":\"FAIL\""));
+            assertTrue(reportJson.contains("prometheus.error_rate_prom <= 0.03"));
+            assertTrue(reportJson.contains("actual=0.07"));
+        } finally {
+            prometheus.stop(0);
+        }
+    }
+
     private static void writeJson(HttpExchange exchange, int status, String body) throws IOException {
         byte[] payload = body.getBytes(StandardCharsets.UTF_8);
         exchange.getResponseHeaders().add("Content-Type", "application/json");
