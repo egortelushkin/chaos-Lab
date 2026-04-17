@@ -19,7 +19,7 @@
 
 ## ⚠️ Project Status
 
-> **Version:** `0.1.0`  
+> **Version:** `0.2.0`  
 > **Status:** Experimental / Test Release  
 >  
 > This project is under active development.  
