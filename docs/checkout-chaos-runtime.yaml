@@ -1,0 +1,45 @@
+experiment:
+  name: checkout_runtime_gate
+  seed: 20260417
+
+load:
+  virtualUsers: 20
+  workerThreads: 10
+  thinkTimeMs: 100
+
+phases:
+  - name: baseline
+    type: WARMUP
+    durationMs: 60000
+  - name: payment_fault
+    type: FAULT
+    durationMs: 120000
+  - name: recovery
+    type: RECOVERY
+    durationMs: 60000
+
+fault:
+  exceptionProbability: 0.15
+  targetOperations:
+    - pay_order
+  mode: PARALLEL
+  seed: 1337
+
+invariants:
+  maxErrorRate: 0.03
+  maxP95LatencyMs: 800
+  noDuplicateOrderIds: true
+
+users:
+  steps:
+    - operation: create_order
+      method: POST
+      url: http://localhost:8080/orders?price=100
+      successStatusCodes: [200, 201]
+      capture:
+        orderId: id
+    - operation: pay_order
+      method: POST
+      url: http://localhost:8080/orders/${orderId}/pay
+      successStatusCodes: [200]
+      emitOrderIdFromSession: orderId

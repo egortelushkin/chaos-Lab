@@ -1,0 +1,44 @@
+experiment:
+  name: checkout_release_gate
+  seed: 20260417
+
+load:
+  virtualUsers: 200
+  workerThreads: 40
+  thinkTimeMs: 150
+
+phases:
+  - name: baseline
+    type: WARMUP
+    durationMs: 180000
+  - name: payment_abort_fault
+    type: FAULT
+    durationMs: 120000
+  - name: post_fault_recovery
+    type: RECOVERY
+    durationMs: 300000
+
+fault:
+  exceptionProbability: 0.15
+  targetOperations:
+    - checkout
+  mode: PARALLEL
+  seed: 1337
+
+invariants:
+  maxErrorRate: 0.03
+  maxP95LatencyMs: 800
+  noDuplicateOrderIds: true
+
+users:
+  steps:
+    - operation: login
+      latencyMs: 40
+      successRate: 0.999
+    - operation: add_to_cart
+      latencyMs: 60
+      successRate: 0.998
+    - operation: checkout
+      latencyMs: 90
+      successRate: 0.995
+      emitOrderId: true

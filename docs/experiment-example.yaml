@@ -22,12 +22,15 @@ fault:
   delayMaxMs: 30
   delayProbability: 0.25
   exceptionProbability: 0.05
+  targetOperations:
+    - checkout
   mode: PARALLEL
   seed: 100
 
 invariants:
   maxErrorRate: 0.03
   maxP95LatencyMs: 200
+  noDuplicateOrderIds: true
 
 users:
   steps:
@@ -40,3 +43,4 @@ users:
     - operation: checkout
       latencyMs: 15
       successRate: 0.99
+      emitOrderId: true

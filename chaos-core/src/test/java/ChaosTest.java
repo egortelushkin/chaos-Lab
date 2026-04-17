@@ -11,12 +11,15 @@ import com.chaosLab.ExperimentReportJson;
 import com.chaosLab.PhaseType;
 import com.chaosLab.RegressionThresholds;
 import com.chaosLab.StepResult;
+import com.chaosLab.StepSequenceUser;
+import com.chaosLab.UserStep;
 import org.junit.jupiter.api.Test;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -229,6 +232,61 @@ class ChaosTest {
         assertTrue(report.getMetrics().getFailedOperations() > 0);
         assertThrows(IllegalStateException.class, () -> ChaosCiGate.assertPassed(report));
         assertEquals(1, ChaosCiGate.exitCode(report));
+    }
+
+    @Test
+    void testFaultTargetsOnlyConfiguredOperations() {
+        AtomicInteger loginCalls = new AtomicInteger();
+        AtomicInteger checkoutCalls = new AtomicInteger();
+        AtomicInteger faultInjections = new AtomicInteger();
+
+        ChaosEngine faultEngine = new ChaosEngine()
+                .addRule(new com.chaosLab.ChaosRule(1.0, () -> faultInjections.incrementAndGet()));
+
+        ChaosExperiment experiment = Chaos.experiment("targeted-fault")
+                .virtualUsers(1)
+                .workerThreads(1)
+                .users(() -> new StepSequenceUser(List.of(
+                        UserStep.named("login", session -> {
+                            loginCalls.incrementAndGet();
+                            return StepResult.success("login");
+                        }),
+                        UserStep.named("checkout", session -> {
+                            checkoutCalls.incrementAndGet();
+                            return StepResult.success("checkout");
+                        })
+                )))
+                .fault(Duration.ofMillis(120))
+                .faultEngine(faultEngine)
+                .faultTargetOperations("checkout")
+                .maxErrorRate(0.0)
+                .build();
+
+        ExperimentReport report = experiment.run();
+
+        assertTrue(report.isPassed());
+        assertTrue(loginCalls.get() > 0);
+        assertTrue(checkoutCalls.get() > 0);
+        assertEquals(checkoutCalls.get(), faultInjections.get());
+        assertTrue(faultInjections.get() < report.getMetrics().getTotalOperations());
+    }
+
+    @Test
+    void testNoDuplicateOrderIdsInvariantFailsOnDuplicates() {
+        ChaosExperiment experiment = Chaos.experiment("duplicate-orders")
+                .virtualUsers(1)
+                .workerThreads(1)
+                .users(() -> session -> StepResult.successWithOrderId("checkout", "order-constant"))
+                .fault(Duration.ofMillis(120))
+                .noDuplicateOrderIds()
+                .build();
+
+        ExperimentReport report = experiment.run();
+
+        assertFalse(report.isPassed());
+        assertTrue(report.getMetrics().getDuplicateOrderIds() > 0);
+        assertTrue(report.getInvariantResults().stream()
+                .anyMatch(result -> "no_duplicate_order_ids".equals(result.getName()) && !result.isPassed()));
     }
 
     @Test

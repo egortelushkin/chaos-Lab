@@ -1,0 +1,185 @@
+package com.chaosLab.dsl;
+
+import com.chaosLab.ChaosCiGate;
+import com.chaosLab.ChaosExperiment;
+import com.chaosLab.ExperimentReport;
+import com.chaosLab.ExperimentReportJson;
+import com.chaosLab.InvariantResult;
+
+import java.nio.file.Path;
+import java.util.List;
+import java.util.Objects;
+import java.util.stream.Collectors;
+
+public final class ChaosLibCli {
+
+    private ChaosLibCli() {
+    }
+
+    public static void main(String[] args) {
+        System.exit(execute(args));
+    }
+
+    public static int execute(String[] args) {
+        CliOptions options = CliOptions.parse(args);
+        if (!"run".equals(options.command)) {
+            throw new IllegalArgumentException("Unknown command: " + options.command + ". " + usage());
+        }
+
+        return runCommand(options.runOptions);
+    }
+
+    private static int runCommand(RunOptions options) {
+        Path resolvedDslPath = RunArtifactsWriter.resolveDslPath(options.dslPath);
+        String yamlText = RunArtifactsWriter.readDslYaml(resolvedDslPath);
+        String dslSha256 = RunArtifactsWriter.sha256(yamlText);
+
+        ChaosExperiment experiment = ChaosDsl.fromYaml(yamlText);
+        ExperimentReport report = experiment.run();
+
+        Path reportPath = resolveReportPath(options);
+        ExperimentReportJson.writeJson(report, reportPath);
+
+        Path snapshotPath = null;
+        Path metadataPath = null;
+        if (options.artifactsDir != null) {
+            snapshotPath = options.artifactsDir.resolve("config-snapshot.yaml");
+            metadataPath = options.artifactsDir.resolve("run-metadata.json");
+            RunArtifactsWriter.writeSnapshot(resolvedDslPath, snapshotPath);
+            RunArtifactsWriter.writeMetadata(
+                    metadataPath,
+                    resolvedDslPath,
+                    reportPath,
+                    dslSha256,
+                    options.enforceGate,
+                    experiment,
+                    report
+            );
+        }
+
+        printSummary(report, reportPath, snapshotPath, metadataPath);
+
+        if (options.enforceGate) {
+            try {
+                ChaosCiGate.assertPassed(report);
+                return 0;
+            } catch (IllegalStateException ignored) {
+                return 1;
+            }
+        }
+        return ChaosCiGate.exitCode(report);
+    }
+
+    private static Path resolveReportPath(RunOptions options) {
+        if (options.reportPath != null) {
+            return options.reportPath;
+        }
+        if (options.artifactsDir != null) {
+            return options.artifactsDir.resolve("report.json");
+        }
+        return Path.of("build", "reports", "chaos-report.json");
+    }
+
+    private static void printSummary(
+            ExperimentReport report,
+            Path reportPath,
+            Path snapshotPath,
+            Path metadataPath
+    ) {
+        StringBuilder summary = new StringBuilder();
+        summary.append("Chaos run finished: ")
+                .append("status=").append(report.getStatus())
+                .append(", resilienceScore=").append(report.getResilienceScore())
+                .append(", report=").append(reportPath);
+        if (snapshotPath != null) {
+            summary.append(", snapshot=").append(snapshotPath);
+        }
+        if (metadataPath != null) {
+            summary.append(", metadata=").append(metadataPath);
+        }
+        if (!report.isPassed()) {
+            List<String> failedInvariants = report.getInvariantResults().stream()
+                    .filter(result -> !result.isPassed())
+                    .map(InvariantResult::getName)
+                    .collect(Collectors.toList());
+            summary.append(", failedInvariants=").append(failedInvariants);
+            summary.append(", executionErrors=").append(report.getExecutionErrors().size());
+        }
+        System.out.println(summary);
+    }
+
+    private static final class CliOptions {
+        private final String command;
+        private final RunOptions runOptions;
+
+        private CliOptions(String command, RunOptions runOptions) {
+            this.command = Objects.requireNonNull(command, "command must not be null");
+            this.runOptions = runOptions;
+        }
+
+        private static CliOptions parse(String[] args) {
+            if (args == null || args.length < 2) {
+                throw new IllegalArgumentException(usage());
+            }
+
+            String command = args[0].trim().toLowerCase();
+            if (!"run".equals(command)) {
+                throw new IllegalArgumentException("Unknown command: " + command + ". " + usage());
+            }
+            return new CliOptions(command, RunOptions.parse(args));
+        }
+    }
+
+    private static final class RunOptions {
+        private final Path dslPath;
+        private final Path reportPath;
+        private final Path artifactsDir;
+        private final boolean enforceGate;
+
+        private RunOptions(Path dslPath, Path reportPath, Path artifactsDir, boolean enforceGate) {
+            this.dslPath = Objects.requireNonNull(dslPath, "dslPath must not be null");
+            this.reportPath = reportPath;
+            this.artifactsDir = artifactsDir;
+            this.enforceGate = enforceGate;
+        }
+
+        private static RunOptions parse(String[] args) {
+            Path dslPath = Path.of(args[1]);
+            Path reportPath = null;
+            Path artifactsDir = null;
+            boolean enforceGate = true;
+
+            int i = 2;
+            while (i < args.length) {
+                String arg = args[i];
+                switch (arg) {
+                    case "--report" -> {
+                        if (i + 1 >= args.length) {
+                            throw new IllegalArgumentException("Missing value for --report. " + usage());
+                        }
+                        reportPath = Path.of(args[i + 1]);
+                        i += 2;
+                    }
+                    case "--artifacts-dir" -> {
+                        if (i + 1 >= args.length) {
+                            throw new IllegalArgumentException("Missing value for --artifacts-dir. " + usage());
+                        }
+                        artifactsDir = Path.of(args[i + 1]);
+                        i += 2;
+                    }
+                    case "--no-gate" -> {
+                        enforceGate = false;
+                        i++;
+                    }
+                    default -> throw new IllegalArgumentException("Unknown argument: " + arg + ". " + usage());
+                }
+            }
+
+            return new RunOptions(dslPath, reportPath, artifactsDir, enforceGate);
+        }
+    }
+
+    private static String usage() {
+        return "Usage: chaoslib run <path-to-experiment.yaml> [--report <path>] [--artifacts-dir <path>] [--no-gate]";
+    }
+}
