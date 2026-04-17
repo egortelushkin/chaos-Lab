@@ -8,6 +8,10 @@ public interface SyntheticUser {
 
     StepResult execute(UserSession session) throws Exception;
 
+    default String nextOperationHint(UserSession session) {
+        return null;
+    }
+
     default void onFinish(UserSession session) {
         // no-op
     }

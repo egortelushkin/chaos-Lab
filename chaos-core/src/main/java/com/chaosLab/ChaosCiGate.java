@@ -28,6 +28,7 @@ public final class ChaosCiGate {
                         "resilienceScore=" + report.getResilienceScore() + ", " +
                         "errorRate=" + report.getMetrics().getErrorRate() + ", " +
                         "p95LatencyMs=" + report.getMetrics().getP95LatencyMs() + ", " +
+                        "duplicateOrderIds=" + report.getMetrics().getDuplicateOrderIds() + ", " +
                         "failedInvariants=" + failedInvariants + ", " +
                         "executionErrors=" + report.getExecutionErrors().size()
         );

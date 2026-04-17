@@ -6,6 +6,8 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
+import java.util.HashSet;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ExecutorService;
@@ -121,20 +123,46 @@ public final class ChaosExperimentRunner {
     ) {
         long started = System.nanoTime();
         boolean success;
+        String orderId = null;
         try {
-            if (phase.getType() == PhaseType.FAULT && experiment.getFaultEngine() != null) {
+            if (shouldInjectFault(experiment, syntheticUser, session, phase)) {
                 experiment.getFaultEngine().unleash();
             }
             StepResult result = syntheticUser.execute(session);
             success = result != null && result.isSuccess();
+            if (result != null) {
+                orderId = result.getOrderId();
+            }
         } catch (Throwable throwable) {
             success = false;
         }
         long durationMs = (System.nanoTime() - started) / 1_000_000L;
-        totalMetricsCollector.record(durationMs, success);
+        totalMetricsCollector.record(durationMs, success, orderId);
         if (phaseMetricsCollector != null) {
-            phaseMetricsCollector.record(durationMs, success);
+            phaseMetricsCollector.record(durationMs, success, orderId);
         }
+    }
+
+    private boolean shouldInjectFault(
+            ChaosExperiment experiment,
+            SyntheticUser syntheticUser,
+            UserSession session,
+            ExperimentPhase phase
+    ) {
+        if (phase.getType() != PhaseType.FAULT || experiment.getFaultEngine() == null) {
+            return false;
+        }
+
+        Set<String> targetOperations = experiment.getFaultTargetOperations();
+        if (targetOperations.isEmpty()) {
+            return true;
+        }
+
+        String operationHint = syntheticUser.nextOperationHint(session);
+        if (operationHint == null || operationHint.isBlank()) {
+            return false;
+        }
+        return targetOperations.contains(operationHint.trim());
     }
 
     private List<InvariantResult> evaluateInvariants(ChaosExperiment experiment, ExperimentMetrics metrics) {
@@ -194,8 +222,11 @@ public final class ChaosExperimentRunner {
         private long failedOperations;
         private long totalLatencyMs;
         private long maxLatencyMs;
+        private final Set<String> seenOrderIds = new HashSet<>();
+        private long uniqueOrderIds;
+        private long duplicateOrderIds;
 
-        synchronized void record(long latencyMs, boolean success) {
+        synchronized void record(long latencyMs, boolean success, String orderId) {
             totalOperations++;
             totalLatencyMs += latencyMs;
             latenciesMs.add(latencyMs);
@@ -204,6 +235,13 @@ public final class ChaosExperimentRunner {
             }
             if (success) {
                 successfulOperations++;
+                if (orderId != null && !orderId.isBlank()) {
+                    if (seenOrderIds.add(orderId)) {
+                        uniqueOrderIds++;
+                    } else {
+                        duplicateOrderIds++;
+                    }
+                }
             } else {
                 failedOperations++;
             }
@@ -223,6 +261,8 @@ public final class ChaosExperimentRunner {
                     p95,
                     avgLatency,
                     maxLatencyMs,
+                    uniqueOrderIds,
+                    duplicateOrderIds,
                     sortedLatencies
             );
         }

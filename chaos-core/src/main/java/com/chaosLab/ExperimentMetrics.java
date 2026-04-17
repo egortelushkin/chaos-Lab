@@ -13,6 +13,8 @@ public final class ExperimentMetrics {
     private final double p95LatencyMs;
     private final double avgLatencyMs;
     private final long maxLatencyMs;
+    private final long uniqueOrderIds;
+    private final long duplicateOrderIds;
     private final List<Long> latenciesMs;
 
     public ExperimentMetrics(
@@ -23,6 +25,8 @@ public final class ExperimentMetrics {
             double p95LatencyMs,
             double avgLatencyMs,
             long maxLatencyMs,
+            long uniqueOrderIds,
+            long duplicateOrderIds,
             List<Long> latenciesMs
     ) {
         this.totalOperations = totalOperations;
@@ -32,6 +36,8 @@ public final class ExperimentMetrics {
         this.p95LatencyMs = p95LatencyMs;
         this.avgLatencyMs = avgLatencyMs;
         this.maxLatencyMs = maxLatencyMs;
+        this.uniqueOrderIds = uniqueOrderIds;
+        this.duplicateOrderIds = duplicateOrderIds;
         this.latenciesMs = Collections.unmodifiableList(new ArrayList<>(latenciesMs));
     }
 
@@ -61,6 +67,14 @@ public final class ExperimentMetrics {
 
     public long getMaxLatencyMs() {
         return maxLatencyMs;
+    }
+
+    public long getUniqueOrderIds() {
+        return uniqueOrderIds;
+    }
+
+    public long getDuplicateOrderIds() {
+        return duplicateOrderIds;
     }
 
     public List<Long> getLatenciesMs() {

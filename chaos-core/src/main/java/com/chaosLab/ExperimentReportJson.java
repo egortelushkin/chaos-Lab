@@ -63,7 +63,9 @@ public final class ExperimentReportJson {
         appendNumberField(json, "errorRate", metrics.getErrorRate()).append(",");
         appendNumberField(json, "p95LatencyMs", metrics.getP95LatencyMs()).append(",");
         appendNumberField(json, "avgLatencyMs", metrics.getAvgLatencyMs()).append(",");
-        appendNumberField(json, "maxLatencyMs", metrics.getMaxLatencyMs());
+        appendNumberField(json, "maxLatencyMs", metrics.getMaxLatencyMs()).append(",");
+        appendNumberField(json, "uniqueOrderIds", metrics.getUniqueOrderIds()).append(",");
+        appendNumberField(json, "duplicateOrderIds", metrics.getDuplicateOrderIds());
         json.append("}");
     }
 

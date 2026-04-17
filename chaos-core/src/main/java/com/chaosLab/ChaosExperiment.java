@@ -2,8 +2,10 @@ package com.chaosLab;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Objects;
+import java.util.Set;
 import java.util.function.Supplier;
 
 public final class ChaosExperiment {
@@ -15,6 +17,7 @@ public final class ChaosExperiment {
     private final Long seed;
     private final Supplier<SyntheticUser> userFactory;
     private final ChaosEngine faultEngine;
+    private final Set<String> faultTargetOperations;
     private final List<ExperimentPhase> phases;
     private final List<Invariant> invariants;
 
@@ -26,6 +29,7 @@ public final class ChaosExperiment {
             Long seed,
             Supplier<SyntheticUser> userFactory,
             ChaosEngine faultEngine,
+            Set<String> faultTargetOperations,
             List<ExperimentPhase> phases,
             List<Invariant> invariants
     ) {
@@ -36,6 +40,8 @@ public final class ChaosExperiment {
         this.seed = seed;
         this.userFactory = Objects.requireNonNull(userFactory, "userFactory must not be null");
         this.faultEngine = faultEngine;
+        Objects.requireNonNull(faultTargetOperations, "faultTargetOperations must not be null");
+        this.faultTargetOperations = Collections.unmodifiableSet(new LinkedHashSet<>(faultTargetOperations));
         this.phases = Collections.unmodifiableList(new ArrayList<>(phases));
         this.invariants = Collections.unmodifiableList(new ArrayList<>(invariants));
     }
@@ -66,6 +72,10 @@ public final class ChaosExperiment {
 
     public ChaosEngine getFaultEngine() {
         return faultEngine;
+    }
+
+    public Set<String> getFaultTargetOperations() {
+        return faultTargetOperations;
     }
 
     public List<ExperimentPhase> getPhases() {

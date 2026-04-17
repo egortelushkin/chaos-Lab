@@ -23,4 +23,9 @@ public final class StepSequenceUser implements SyntheticUser {
         cursor = (cursor + 1) % steps.size();
         return step.execute(session);
     }
+
+    @Override
+    public String nextOperationHint(UserSession session) {
+        return steps.get(cursor).operation();
+    }
 }
