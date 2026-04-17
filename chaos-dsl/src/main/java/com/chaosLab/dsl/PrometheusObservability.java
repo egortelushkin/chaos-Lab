@@ -15,6 +15,7 @@ import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -68,7 +69,46 @@ final class PrometheusObservability {
             }
             PrometheusOperator operator = PrometheusOperator.parse(operatorRaw == null ? "<=" : operatorRaw);
             double threshold = getDouble(checkMap, "threshold", true);
-            checks.add(new PrometheusCheckDefinition(name, query, operator, threshold));
+
+            String modeRaw = getString(checkMap, "mode", false);
+            if (modeRaw == null) {
+                modeRaw = getString(checkMap, "queryType", false);
+            }
+            PrometheusQueryMode mode = PrometheusQueryMode.parse(modeRaw == null ? "instant" : modeRaw);
+
+            long rangeSeconds = getLong(checkMap, "rangeSeconds", false, 300L);
+            if (!checkMap.containsKey("rangeSeconds")) {
+                rangeSeconds = getLong(checkMap, "windowSeconds", false, rangeSeconds);
+            }
+            if (!checkMap.containsKey("rangeSeconds") && !checkMap.containsKey("windowSeconds")) {
+                rangeSeconds = getLong(checkMap, "lookbackSeconds", false, rangeSeconds);
+            }
+            long stepSeconds = getLong(checkMap, "stepSeconds", false, 15L);
+            String reducerRaw = getString(checkMap, "reducer", false);
+            if (reducerRaw == null) {
+                reducerRaw = getString(checkMap, "aggregation", false);
+            }
+            PrometheusReducer reducer = PrometheusReducer.parse(reducerRaw == null ? "max" : reducerRaw);
+
+            if (mode == PrometheusQueryMode.RANGE) {
+                if (rangeSeconds <= 0) {
+                    throw new IllegalArgumentException("observability.prometheus.checks.rangeSeconds must be > 0 for range mode");
+                }
+                if (stepSeconds <= 0) {
+                    throw new IllegalArgumentException("observability.prometheus.checks.stepSeconds must be > 0 for range mode");
+                }
+            }
+
+            checks.add(new PrometheusCheckDefinition(
+                    name,
+                    query,
+                    operator,
+                    threshold,
+                    mode,
+                    rangeSeconds,
+                    stepSeconds,
+                    reducer
+            ));
         }
 
         return new PrometheusConfig(baseUrl, timeoutMs, List.copyOf(checks));
@@ -91,9 +131,17 @@ final class PrometheusObservability {
         PrometheusCheckDefinition check = result.definition();
         String name = "prometheus." + check.name() + " " + check.operator().symbol() + " " + check.threshold();
         if (result.error() != null) {
-            return new InvariantResult(name, false, "error=" + result.error() + ", query=" + check.query());
+            return new InvariantResult(
+                    name,
+                    false,
+                    "error=" + result.error() + ", query=" + check.query() + ", mode=" + check.mode().wireName()
+            );
         }
-        return new InvariantResult(name, result.passed(), "actual=" + result.actualValue() + ", query=" + check.query());
+        return new InvariantResult(
+                name,
+                result.passed(),
+                "actual=" + result.actualValue() + ", query=" + check.query() + ", mode=" + check.mode().wireName() + ", reducer=" + check.reducer().wireName()
+        );
     }
 
     private static PrometheusCheckResult evaluateOne(
@@ -103,8 +151,20 @@ final class PrometheusObservability {
     ) {
         try {
             String encodedQuery = URLEncoder.encode(check.query(), StandardCharsets.UTF_8);
-            long time = Instant.now().getEpochSecond();
-            URI uri = URI.create(config.baseUrl() + "/api/v1/query?query=" + encodedQuery + "&time=" + time);
+            long end = Instant.now().getEpochSecond();
+            URI uri;
+            if (check.mode() == PrometheusQueryMode.RANGE) {
+                long start = end - check.rangeSeconds();
+                uri = URI.create(
+                        config.baseUrl() +
+                                "/api/v1/query_range?query=" + encodedQuery +
+                                "&start=" + start +
+                                "&end=" + end +
+                                "&step=" + check.stepSeconds()
+                );
+            } else {
+                uri = URI.create(config.baseUrl() + "/api/v1/query?query=" + encodedQuery + "&time=" + end);
+            }
 
             HttpRequest request = HttpRequest.newBuilder(uri)
                     .timeout(Duration.ofMillis(config.timeoutMs()))
@@ -124,14 +184,8 @@ final class PrometheusObservability {
 
             JsonNode data = root.path("data");
             String resultType = data.path("resultType").asText("");
-            double actual;
-            if ("vector".equals(resultType)) {
-                actual = extractVectorValue(data.path("result"));
-            } else if ("scalar".equals(resultType)) {
-                actual = extractScalarValue(data.path("result"));
-            } else {
-                return new PrometheusCheckResult(check, Double.NaN, false, "Unsupported resultType=" + resultType);
-            }
+            List<PrometheusSample> samples = extractSamples(data.path("result"), resultType);
+            double actual = reduceSamples(samples, check.reducer());
 
             if (Double.isNaN(actual)) {
                 return new PrometheusCheckResult(check, Double.NaN, false, "No numeric value in result");
@@ -144,35 +198,86 @@ final class PrometheusObservability {
         }
     }
 
-    private static double extractVectorValue(JsonNode vectorNode) {
-        if (!vectorNode.isArray() || vectorNode.isEmpty()) {
-            return Double.NaN;
-        }
-
-        double max = Double.NEGATIVE_INFINITY;
-        boolean found = false;
-        for (JsonNode item : vectorNode) {
-            JsonNode value = item.path("value");
-            if (!value.isArray() || value.size() < 2) {
-                continue;
-            }
-            double parsed = parseNumericNode(value.get(1));
-            if (Double.isNaN(parsed)) {
-                continue;
-            }
-            found = true;
-            if (parsed > max) {
-                max = parsed;
+    private static List<PrometheusSample> extractSamples(JsonNode resultNode, String resultType) {
+        List<PrometheusSample> samples = new ArrayList<>();
+        switch (resultType) {
+            case "vector" -> extractVectorSamples(resultNode, samples);
+            case "matrix" -> extractMatrixSamples(resultNode, samples);
+            case "scalar" -> extractScalarSamples(resultNode, samples);
+            default -> {
+                return List.of();
             }
         }
-        return found ? max : Double.NaN;
+        return samples;
     }
 
-    private static double extractScalarValue(JsonNode scalarNode) {
-        if (!scalarNode.isArray() || scalarNode.size() < 2) {
+    private static void extractVectorSamples(JsonNode vectorNode, List<PrometheusSample> out) {
+        if (!vectorNode.isArray()) {
+            return;
+        }
+        for (JsonNode item : vectorNode) {
+            appendSampleFromPair(item.path("value"), out);
+        }
+    }
+
+    private static void extractMatrixSamples(JsonNode matrixNode, List<PrometheusSample> out) {
+        if (!matrixNode.isArray()) {
+            return;
+        }
+        for (JsonNode series : matrixNode) {
+            JsonNode values = series.path("values");
+            if (!values.isArray()) {
+                continue;
+            }
+            for (JsonNode pair : values) {
+                appendSampleFromPair(pair, out);
+            }
+        }
+    }
+
+    private static void extractScalarSamples(JsonNode scalarNode, List<PrometheusSample> out) {
+        appendSampleFromPair(scalarNode, out);
+    }
+
+    private static void appendSampleFromPair(JsonNode pairNode, List<PrometheusSample> out) {
+        if (!pairNode.isArray() || pairNode.size() < 2) {
+            return;
+        }
+        double value = parseNumericNode(pairNode.get(1));
+        if (Double.isNaN(value)) {
+            return;
+        }
+        long timestamp = parseEpochSecondsNode(pairNode.get(0));
+        out.add(new PrometheusSample(timestamp, value));
+    }
+
+    private static double reduceSamples(List<PrometheusSample> samples, PrometheusReducer reducer) {
+        if (samples.isEmpty()) {
             return Double.NaN;
         }
-        return parseNumericNode(scalarNode.get(1));
+        return switch (reducer) {
+            case MAX -> samples.stream().mapToDouble(PrometheusSample::value).max().orElse(Double.NaN);
+            case MIN -> samples.stream().mapToDouble(PrometheusSample::value).min().orElse(Double.NaN);
+            case AVG -> samples.stream().mapToDouble(PrometheusSample::value).average().orElse(Double.NaN);
+            case LAST -> samples.stream()
+                    .max(Comparator.comparingLong(PrometheusSample::timestampSeconds))
+                    .map(PrometheusSample::value)
+                    .orElse(Double.NaN);
+        };
+    }
+
+    private static long parseEpochSecondsNode(JsonNode valueNode) {
+        if (valueNode == null || valueNode.isNull()) {
+            return 0L;
+        }
+        if (valueNode.isNumber()) {
+            return valueNode.asLong();
+        }
+        try {
+            return (long) Double.parseDouble(valueNode.asText());
+        } catch (NumberFormatException e) {
+            return 0L;
+        }
     }
 
     private static double parseNumericNode(JsonNode valueNode) {
@@ -290,12 +395,18 @@ final class PrometheusObservability {
             String name,
             String query,
             PrometheusOperator operator,
-            double threshold
+            double threshold,
+            PrometheusQueryMode mode,
+            long rangeSeconds,
+            long stepSeconds,
+            PrometheusReducer reducer
     ) {
         PrometheusCheckDefinition {
             Objects.requireNonNull(name, "name must not be null");
             Objects.requireNonNull(query, "query must not be null");
             Objects.requireNonNull(operator, "operator must not be null");
+            Objects.requireNonNull(mode, "mode must not be null");
+            Objects.requireNonNull(reducer, "reducer must not be null");
         }
     }
 
@@ -307,6 +418,61 @@ final class PrometheusObservability {
     ) {
         PrometheusCheckResult {
             Objects.requireNonNull(definition, "definition must not be null");
+        }
+    }
+
+    record PrometheusSample(long timestampSeconds, double value) {
+    }
+
+    enum PrometheusQueryMode {
+        INSTANT("instant"),
+        RANGE("range");
+
+        private final String wireName;
+
+        PrometheusQueryMode(String wireName) {
+            this.wireName = wireName;
+        }
+
+        String wireName() {
+            return wireName;
+        }
+
+        static PrometheusQueryMode parse(String raw) {
+            String normalized = raw.trim().toLowerCase(Locale.ROOT);
+            return switch (normalized) {
+                case "instant", "query" -> INSTANT;
+                case "range", "query_range" -> RANGE;
+                default -> throw new IllegalArgumentException("Unknown prometheus query mode: " + raw);
+            };
+        }
+    }
+
+    enum PrometheusReducer {
+        MAX("max"),
+        MIN("min"),
+        AVG("avg"),
+        LAST("last");
+
+        private final String wireName;
+
+        PrometheusReducer(String wireName) {
+            this.wireName = wireName;
+        }
+
+        String wireName() {
+            return wireName;
+        }
+
+        static PrometheusReducer parse(String raw) {
+            String normalized = raw.trim().toLowerCase(Locale.ROOT);
+            return switch (normalized) {
+                case "max" -> MAX;
+                case "min" -> MIN;
+                case "avg", "average", "mean" -> AVG;
+                case "last", "latest" -> LAST;
+                default -> throw new IllegalArgumentException("Unknown prometheus reducer: " + raw);
+            };
         }
     }
 

@@ -37,12 +37,26 @@ observability:
     checks:
       - name: payment_error_rate_prom
         query: checkout_payment_error_rate
+        mode: instant
         operator: <=
         threshold: 0.03
       - name: checkout_p95_latency_prom
         query: checkout_p95_latency_ms
+        mode: range
+        rangeSeconds: 300
+        stepSeconds: 15
+        reducer: max
         operator: <=
         threshold: 800
+  grafana:
+    baseUrl: http://localhost:3000
+    apiTokenEnv: GRAFANA_API_TOKEN
+    dashboardUid: checkout-dashboard
+    panelId: 12
+    tags: [chaoslib, checkout]
+    annotatePhases: true
+    annotateRun: true
+    failOnError: false
 
 users:
   steps:

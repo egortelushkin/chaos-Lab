@@ -79,7 +79,8 @@ final class RunArtifactsWriter {
             boolean gateEnforced,
             ChaosExperiment experiment,
             ExperimentReport report,
-            List<PrometheusObservability.PrometheusCheckResult> prometheusChecks
+            List<PrometheusObservability.PrometheusCheckResult> prometheusChecks,
+            GrafanaObservability.GrafanaPublishResult grafanaResult
     ) {
         Objects.requireNonNull(metadataPath, "metadataPath must not be null");
         Objects.requireNonNull(dslPath, "dslPath must not be null");
@@ -88,6 +89,7 @@ final class RunArtifactsWriter {
         Objects.requireNonNull(experiment, "experiment must not be null");
         Objects.requireNonNull(report, "report must not be null");
         Objects.requireNonNull(prometheusChecks, "prometheusChecks must not be null");
+        Objects.requireNonNull(grafanaResult, "grafanaResult must not be null");
 
         ChaosEngine faultEngine = experiment.getFaultEngine();
         Long faultSeed = faultEngine == null ? null : faultEngine.getRandomSeed();
@@ -112,6 +114,7 @@ final class RunArtifactsWriter {
         appendStringListField(json, "faultTargetOperations", experiment.getFaultTargetOperations().stream().toList()).append(",");
         appendStringListField(json, "failedInvariants", failedInvariants).append(",");
         appendPrometheusChecksField(json, "prometheusChecks", prometheusChecks).append(",");
+        appendGrafanaResultField(json, "grafanaAnnotations", grafanaResult).append(",");
         appendNumberField(json, "executionErrorCount", report.getExecutionErrors().size());
         json.append("}");
 
@@ -196,6 +199,8 @@ final class RunArtifactsWriter {
             appendStringField(json, "name", definition.name()).append(",");
             appendStringField(json, "query", definition.query()).append(",");
             appendStringField(json, "operator", definition.operator().symbol()).append(",");
+            appendStringField(json, "mode", definition.mode().wireName()).append(",");
+            appendStringField(json, "reducer", definition.reducer().wireName()).append(",");
             appendNumberField(json, "threshold", definition.threshold()).append(",");
             if (Double.isNaN(checkResult.actualValue())) {
                 json.append("\"actualValue\":null,");
@@ -214,6 +219,20 @@ final class RunArtifactsWriter {
             }
         }
         json.append("]");
+        return json;
+    }
+
+    private static StringBuilder appendGrafanaResultField(
+            StringBuilder json,
+            String name,
+            GrafanaObservability.GrafanaPublishResult grafanaResult
+    ) {
+        json.append("\"").append(escape(name)).append("\":");
+        json.append("{");
+        appendNumberField(json, "requested", grafanaResult.requested()).append(",");
+        appendNumberField(json, "created", grafanaResult.annotationIds().size()).append(",");
+        appendStringListField(json, "errors", grafanaResult.errors());
+        json.append("}");
         return json;
     }
 

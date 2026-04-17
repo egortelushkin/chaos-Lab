@@ -38,6 +38,7 @@ public final class ChaosLibCli {
         String yamlText = RunArtifactsWriter.readDslYaml(resolvedDslPath);
         String dslSha256 = RunArtifactsWriter.sha256(yamlText);
         PrometheusObservability.PrometheusConfig prometheusConfig = PrometheusObservability.parseFromYaml(yamlText);
+        GrafanaObservability.GrafanaConfig grafanaConfig = GrafanaObservability.parseFromYaml(yamlText);
 
         ChaosExperiment experiment = ChaosDsl.fromYaml(yamlText);
         ExperimentReport report = experiment.run();
@@ -45,6 +46,18 @@ public final class ChaosLibCli {
                 ? List.of()
                 : PrometheusObservability.evaluate(prometheusConfig);
         report = mergePrometheusChecks(report, prometheusChecks);
+        GrafanaObservability.GrafanaPublishResult grafanaResult = grafanaConfig == null
+                ? new GrafanaObservability.GrafanaPublishResult(0, List.of(), List.of())
+                : GrafanaObservability.publish(grafanaConfig, experiment, report);
+
+        if (grafanaConfig != null && grafanaConfig.failOnError() && !grafanaResult.errors().isEmpty()) {
+            InvariantResult grafanaInvariant = new InvariantResult(
+                    "grafana.annotations",
+                    false,
+                    "errors=" + grafanaResult.errors()
+            );
+            report = mergeAdditionalInvariants(report, List.of(grafanaInvariant), 1);
+        }
 
         Path reportPath = resolveReportPath(options);
         ExperimentReportJson.writeJson(report, reportPath);
@@ -63,11 +76,12 @@ public final class ChaosLibCli {
                     options.enforceGate,
                     experiment,
                     report,
-                    prometheusChecks
+                    prometheusChecks,
+                    grafanaResult
             );
         }
 
-        printSummary(report, reportPath, snapshotPath, metadataPath, prometheusChecks);
+        printSummary(report, reportPath, snapshotPath, metadataPath, prometheusChecks, grafanaResult);
 
         if (options.enforceGate) {
             try {
@@ -95,7 +109,8 @@ public final class ChaosLibCli {
             Path reportPath,
             Path snapshotPath,
             Path metadataPath,
-            List<PrometheusObservability.PrometheusCheckResult> prometheusChecks
+            List<PrometheusObservability.PrometheusCheckResult> prometheusChecks,
+            GrafanaObservability.GrafanaPublishResult grafanaResult
     ) {
         StringBuilder summary = new StringBuilder();
         summary.append("Chaos run finished: ")
@@ -112,6 +127,11 @@ public final class ChaosLibCli {
             long failedPrometheusChecks = prometheusChecks.stream().filter(result -> !result.passed()).count();
             summary.append(", prometheusChecks=").append(prometheusChecks.size());
             summary.append(", failedPrometheusChecks=").append(failedPrometheusChecks);
+        }
+        if (grafanaResult.requested() > 0) {
+            summary.append(", grafanaRequested=").append(grafanaResult.requested());
+            summary.append(", grafanaCreated=").append(grafanaResult.annotationIds().size());
+            summary.append(", grafanaErrors=").append(grafanaResult.errors().size());
         }
         if (!report.isPassed()) {
             List<String> failedInvariants = report.getInvariantResults().stream()
@@ -132,23 +152,37 @@ public final class ChaosLibCli {
             return original;
         }
 
-        List<InvariantResult> mergedInvariantResults = new ArrayList<>(original.getInvariantResults());
+        List<InvariantResult> prometheusInvariantResults = new ArrayList<>();
         int failedPrometheusChecks = 0;
         for (PrometheusObservability.PrometheusCheckResult prometheusCheck : prometheusChecks) {
             InvariantResult invariantResult = PrometheusObservability.toInvariantResult(prometheusCheck);
-            mergedInvariantResults.add(invariantResult);
+            prometheusInvariantResults.add(invariantResult);
             if (!invariantResult.isPassed()) {
                 failedPrometheusChecks++;
             }
         }
+        return mergeAdditionalInvariants(original, prometheusInvariantResults, failedPrometheusChecks);
+    }
+
+    private static ExperimentReport mergeAdditionalInvariants(
+            ExperimentReport original,
+            List<InvariantResult> additionalInvariantResults,
+            int failedAdditionalInvariantCount
+    ) {
+        if (additionalInvariantResults.isEmpty()) {
+            return original;
+        }
+
+        List<InvariantResult> mergedInvariantResults = new ArrayList<>(original.getInvariantResults());
+        mergedInvariantResults.addAll(additionalInvariantResults);
 
         boolean allInvariantsPassed = mergedInvariantResults.stream().allMatch(InvariantResult::isPassed);
         boolean noExecutionErrors = original.getExecutionErrors().isEmpty();
         ExperimentStatus status = allInvariantsPassed && noExecutionErrors ? ExperimentStatus.PASS : ExperimentStatus.FAIL;
 
         double adjustedScore = original.getResilienceScore();
-        if (failedPrometheusChecks > 0) {
-            adjustedScore = clampAndRound(adjustedScore - failedPrometheusChecks * 15.0);
+        if (failedAdditionalInvariantCount > 0) {
+            adjustedScore = clampAndRound(adjustedScore - failedAdditionalInvariantCount * 15.0);
         }
 
         return new ExperimentReport(

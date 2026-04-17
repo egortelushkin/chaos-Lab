@@ -130,18 +130,45 @@ observability:
     checks:
       - name: error_rate_prom
         query: demo_error_rate
+        mode: instant
         operator: <=
         threshold: 0.03
       - name: p95_latency_prom
         query: demo_p95_latency_ms
+        mode: range
+        rangeSeconds: 300
+        stepSeconds: 15
+        reducer: max
         operator: <=
         threshold: 800
 ```
 
 Supported operators: `<`, `<=`, `>`, `>=`, `==`, `!=`.
+Supported `mode`: `instant` (`/api/v1/query`) and `range` (`/api/v1/query_range`).
+Supported range `reducer`: `max`, `min`, `avg`, `last`.
 
 Prometheus checks are:
 - evaluated after experiment run,
 - added to `invariantResults` in `report.json`,
 - included in `run-metadata.json`,
 - enforced by gate (non-zero exit code on failure).
+
+Grafana annotations:
+
+```yaml
+observability:
+  grafana:
+    baseUrl: http://localhost:3000
+    apiTokenEnv: GRAFANA_API_TOKEN
+    dashboardUid: checkout-dashboard
+    panelId: 12
+    tags: [chaoslib, checkout]
+    annotatePhases: true
+    annotateRun: true
+    failOnError: false
+```
+
+Grafana integration behavior:
+- posts annotations to `/api/annotations` for each phase and/or whole run,
+- writes annotation stats to `run-metadata.json`,
+- can fail gate on annotation delivery errors when `failOnError: true`.

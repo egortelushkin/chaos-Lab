@@ -14,7 +14,9 @@ import java.net.InetSocketAddress;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.charset.StandardCharsets;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -430,6 +432,150 @@ class ChaosDslTest {
             assertTrue(reportJson.contains("actual=0.07"));
         } finally {
             prometheus.stop(0);
+        }
+    }
+
+    @Test
+    void testChaosLibCliPrometheusRangeCheckSupportsReducer() throws Exception {
+        HttpServer prometheus = HttpServer.create(new InetSocketAddress(0), 0);
+        prometheus.setExecutor(Executors.newCachedThreadPool());
+        prometheus.createContext("/api/v1/query_range", exchange -> {
+            String body = """
+                    {
+                      "status":"success",
+                      "data":{
+                        "resultType":"matrix",
+                        "result":[
+                          {
+                            "metric":{"service":"checkout"},
+                            "values":[[1713380000,"600"],[1713380060,"950"],[1713380120,"700"]]
+                          }
+                        ]
+                      }
+                    }
+                    """;
+            writeJson(exchange, 200, body);
+        });
+        prometheus.start();
+        try {
+            int port = prometheus.getAddress().getPort();
+            String yaml = """
+                    experiment:
+                      name: prometheus_range_gate
+                    load:
+                      virtualUsers: 1
+                      workerThreads: 1
+                    phases:
+                      - name: fault
+                        type: FAULT
+                        durationMs: 80
+                    invariants:
+                      maxErrorRate: 1.0
+                    observability:
+                      prometheus:
+                        baseUrl: http://localhost:%d
+                        checks:
+                          - name: p95_range
+                            query: checkout_p95_latency_ms
+                            mode: range
+                            rangeSeconds: 300
+                            stepSeconds: 60
+                            reducer: max
+                            operator: <=
+                            threshold: 800
+                    users:
+                      steps:
+                        - operation: stable
+                          successRate: 1.0
+                    """.formatted(port);
+
+            Path dslFile = Files.createTempFile("chaos-prom-range-", ".yaml");
+            Files.writeString(dslFile, yaml);
+
+            Path reportFile = Files.createTempFile("chaos-prom-range-report-", ".json");
+            int exitCode = ChaosLibCli.execute(new String[]{
+                    "run",
+                    dslFile.toString(),
+                    "--report",
+                    reportFile.toString()
+            });
+
+            assertEquals(1, exitCode);
+            String reportJson = Files.readString(reportFile);
+            assertTrue(reportJson.contains("\"status\":\"FAIL\""));
+            assertTrue(reportJson.contains("prometheus.p95_range <= 800.0"));
+            assertTrue(reportJson.contains("actual=950.0"));
+            assertTrue(reportJson.contains("mode=range"));
+        } finally {
+            prometheus.stop(0);
+        }
+    }
+
+    @Test
+    void testChaosLibCliGrafanaAnnotationsCreatedForPhasesAndRun() throws Exception {
+        AtomicInteger annotationCalls = new AtomicInteger();
+        CopyOnWriteArrayList<String> authHeaders = new CopyOnWriteArrayList<>();
+
+        HttpServer grafana = HttpServer.create(new InetSocketAddress(0), 0);
+        grafana.setExecutor(Executors.newCachedThreadPool());
+        grafana.createContext("/api/annotations", exchange -> {
+            authHeaders.add(exchange.getRequestHeaders().getFirst("Authorization"));
+            int id = annotationCalls.incrementAndGet();
+            writeJson(exchange, 200, "{\"id\":" + id + "}");
+        });
+        grafana.start();
+        try {
+            int port = grafana.getAddress().getPort();
+            String yaml = """
+                    experiment:
+                      name: grafana_annotations
+                    load:
+                      virtualUsers: 1
+                      workerThreads: 1
+                    phases:
+                      - name: warmup
+                        type: WARMUP
+                        durationMs: 50
+                      - name: fault
+                        type: FAULT
+                        durationMs: 50
+                    invariants:
+                      maxErrorRate: 1.0
+                    observability:
+                      grafana:
+                        baseUrl: http://localhost:%d
+                        apiToken: test-token
+                        tags: [chaoslib, checkout]
+                        annotatePhases: true
+                        annotateRun: true
+                        failOnError: true
+                    users:
+                      steps:
+                        - operation: stable
+                          successRate: 1.0
+                    """.formatted(port);
+
+            Path dslFile = Files.createTempFile("chaos-grafana-", ".yaml");
+            Files.writeString(dslFile, yaml);
+
+            Path artifactsDir = Files.createTempDirectory("chaos-grafana-artifacts-");
+            int exitCode = ChaosLibCli.execute(new String[]{
+                    "run",
+                    dslFile.toString(),
+                    "--artifacts-dir",
+                    artifactsDir.toString()
+            });
+
+            assertEquals(0, exitCode);
+            assertEquals(3, annotationCalls.get());
+            assertTrue(authHeaders.stream().allMatch("Bearer test-token"::equals));
+
+            String metadata = Files.readString(artifactsDir.resolve("run-metadata.json"));
+            assertTrue(metadata.contains("\"grafanaAnnotations\""));
+            assertTrue(metadata.contains("\"requested\":3"));
+            assertTrue(metadata.contains("\"created\":3"));
+        } finally {
+            grafana.stop(0);
         }
     }
 
