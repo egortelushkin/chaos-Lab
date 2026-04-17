@@ -99,6 +99,11 @@ public class UserService {
 ### 4. How it Works
 When a method annotated with `@Chaosify` is called, the Chaos Spring Starter checks the configured scenario. Based on the defined probabilities, it may introduce delays, throw exceptions, or simulate CPU/memory stress before proceeding with the original method execution.
 
+Default `@Chaosify` scenario name is `default`.
+Legacy aliases are still supported:
+- `DefaultChaosScenario` -> `default`
+- `StressChaos` -> `stress`
+
 ### 5. Example Usage
 ```java
 @SpringBootTest
@@ -145,5 +150,31 @@ scenario.getEngine().addRule(new ChaosRule(0.5, new DiskIOLoadEffect()));
 - Spring Boot 3+ and Java 17+ are required.
 - Use @Chaosify only on Spring-managed beans (services, controllers, etc.).
 - Asynchronous execution ensures that chaos effects do not block the main thread.
+
+### 9. Missing Scenario Policy
+By default, missing scenario names cause an exception in aspect:
+
+```yaml
+chaos:
+  fail-on-missing-scenario: true
+```
+
+Set `false` to only log a warning and continue method execution.
+
+### 10. Scenario Control API (Optional)
+Enable runtime control endpoints:
+
+```yaml
+chaos:
+  control:
+    enabled: true
+```
+
+Endpoints:
+- `GET /chaos/control/scenarios`
+- `POST /chaos/control/scenarios/{name}/enable`
+- `POST /chaos/control/scenarios/{name}/disable`
+- `POST /chaos/control/scenarios/disable-all`
+- `POST /chaos/control/scenarios/enable-only` with body `{"names":["default","stress"]}`
 
 ### Enjoy chaos! 💥

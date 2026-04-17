@@ -39,9 +39,27 @@ public final class ChaosLibCli {
         String dslSha256 = RunArtifactsWriter.sha256(yamlText);
         PrometheusObservability.PrometheusConfig prometheusConfig = PrometheusObservability.parseFromYaml(yamlText);
         GrafanaObservability.GrafanaConfig grafanaConfig = GrafanaObservability.parseFromYaml(yamlText);
+        SpringPhaseControlSync.SpringControlConfig springControlConfig = SpringPhaseControlSync.parseFromYaml(yamlText);
 
         ChaosExperiment experiment = ChaosDsl.fromYaml(yamlText);
+        SpringPhaseControlSync.PhaseSyncHandle phaseSyncHandle = springControlConfig == null
+                ? null
+                : SpringPhaseControlSync.start(springControlConfig, experiment);
+
         ExperimentReport report = experiment.run();
+        SpringPhaseControlSync.PhaseSyncResult springPhaseSyncResult = phaseSyncHandle == null
+                ? SpringPhaseControlSync.emptyResult()
+                : phaseSyncHandle.finish();
+
+        if (springControlConfig != null && springControlConfig.failOnError() && !springPhaseSyncResult.errors().isEmpty()) {
+            InvariantResult springSyncInvariant = new InvariantResult(
+                    "spring_control_sync",
+                    false,
+                    "errors=" + springPhaseSyncResult.errors()
+            );
+            report = mergeAdditionalInvariants(report, List.of(springSyncInvariant), 1);
+        }
+
         List<PrometheusObservability.PrometheusCheckResult> prometheusChecks = prometheusConfig == null
                 ? List.of()
                 : PrometheusObservability.evaluate(prometheusConfig);
@@ -77,11 +95,12 @@ public final class ChaosLibCli {
                     experiment,
                     report,
                     prometheusChecks,
-                    grafanaResult
+                    grafanaResult,
+                    springPhaseSyncResult
             );
         }
 
-        printSummary(report, reportPath, snapshotPath, metadataPath, prometheusChecks, grafanaResult);
+        printSummary(report, reportPath, snapshotPath, metadataPath, prometheusChecks, grafanaResult, springPhaseSyncResult);
 
         if (options.enforceGate) {
             try {
@@ -110,7 +129,8 @@ public final class ChaosLibCli {
             Path snapshotPath,
             Path metadataPath,
             List<PrometheusObservability.PrometheusCheckResult> prometheusChecks,
-            GrafanaObservability.GrafanaPublishResult grafanaResult
+            GrafanaObservability.GrafanaPublishResult grafanaResult,
+            SpringPhaseControlSync.PhaseSyncResult springPhaseSyncResult
     ) {
         StringBuilder summary = new StringBuilder();
         summary.append("Chaos run finished: ")
@@ -132,6 +152,11 @@ public final class ChaosLibCli {
             summary.append(", grafanaRequested=").append(grafanaResult.requested());
             summary.append(", grafanaCreated=").append(grafanaResult.annotationIds().size());
             summary.append(", grafanaErrors=").append(grafanaResult.errors().size());
+        }
+        if (springPhaseSyncResult.requestedSwitches() > 0) {
+            summary.append(", springPhaseSwitches=").append(springPhaseSyncResult.requestedSwitches());
+            summary.append(", springPhaseSwitchesOk=").append(springPhaseSyncResult.successfulSwitches());
+            summary.append(", springPhaseErrors=").append(springPhaseSyncResult.errors().size());
         }
         if (!report.isPassed()) {
             List<String> failedInvariants = report.getInvariantResults().stream()

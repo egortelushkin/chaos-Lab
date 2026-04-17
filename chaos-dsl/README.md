@@ -117,6 +117,46 @@ Supported HTTP step fields:
 - `emitOrderIdFromSession` or `emitOrderIdJsonField` for `noDuplicateOrderIds`
 - JSON path supports `field.subfield`, array indexes (`items[0].id`), or JSON Pointer (`/field/subfield`)
 
+## Spring phase sync (`runtime.springControl`)
+
+If your service uses `chaos-spring-starter`, DSL runner can switch active chaos scenarios by phase:
+- `WARMUP` -> enable `warmupScenarios`
+- `FAULT` -> enable `faultScenarios`
+- `RECOVERY` -> enable `recoveryScenarios`
+- optional post-run cleanup: disable all scenarios
+
+Enable control API in Spring Boot app:
+
+```yaml
+chaos:
+  control:
+    enabled: true
+```
+
+Runner-side config in experiment YAML:
+
+```yaml
+runtime:
+  springControl:
+    enabled: true
+    baseUrl: http://localhost:8080
+    timeoutMs: 3000
+    failOnError: true
+    disableAllAfterRun: true
+    warmupScenarios: [default]
+    faultScenarios: [stress]
+    recoveryScenarios: [default]
+```
+
+Fields:
+- `enabled` (default `true`): turn sync on/off.
+- `baseUrl` (required): base URL of tested Spring service.
+- `timeoutMs` (default `3000`): request timeout to control API.
+- `failOnError` (default `true`): add failing invariant `spring_control_sync` on delivery errors.
+- `disableAllAfterRun` (default `true`): call `enable-only` with empty list after run.
+- `warmupScenarios`, `faultScenarios`, `recoveryScenarios`: scenario names for each phase.
+  Defaults: `warmup=[default]`, `fault=[stress]`, `recovery=[default]`.
+
 ## Prometheus/Grafana integration
 
 You can add Prometheus checks directly in DSL.  

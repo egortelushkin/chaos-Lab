@@ -4,6 +4,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.context.annotation.Configuration;
 import jakarta.annotation.PostConstruct;
 
+import java.util.Locale;
 import java.util.Map;
 
 @Configuration
@@ -46,7 +47,24 @@ public class ChaosStarterConfig {
                 scenario.getEngine().addRule(new ChaosRule(1.0, new MemoryLeakEffect(props.getMemoryLeak().getBytes())));
 
             ChaosScenarios.register(scenario);
+            registerLegacyAliases(name, scenario);
         });
+    }
+
+    private static void registerLegacyAliases(String configuredName, ChaosScenario scenario) {
+        if (configuredName == null) {
+            return;
+        }
+        String normalized = configuredName.trim().toLowerCase(Locale.ROOT);
+        switch (normalized) {
+            case "default" -> ChaosScenarios.registerAlias("DefaultChaosScenario", scenario);
+            case "stress" -> ChaosScenarios.registerAlias("StressChaos", scenario);
+            case "defaultchaosscenario" -> ChaosScenarios.registerAlias("default", scenario);
+            case "stresschaos" -> ChaosScenarios.registerAlias("stress", scenario);
+            default -> {
+                // no-op
+            }
+        }
     }
 
     // ---------------- Properties ----------------

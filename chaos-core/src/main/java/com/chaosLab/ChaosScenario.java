@@ -21,6 +21,10 @@ public class ChaosScenario {
         enabled = false;
     }
 
+    public boolean isEnabled() {
+        return enabled;
+    }
+
     public void unleash() {
         if (enabled) engine.unleash();
     }

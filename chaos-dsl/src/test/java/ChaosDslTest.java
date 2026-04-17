@@ -579,6 +579,123 @@ class ChaosDslTest {
         }
     }
 
+    @Test
+    void testChaosLibCliSpringControlSyncSwitchesScenariosAcrossPhases() throws Exception {
+        AtomicInteger switchCalls = new AtomicInteger();
+        CopyOnWriteArrayList<String> payloads = new CopyOnWriteArrayList<>();
+
+        HttpServer controlApi = HttpServer.create(new InetSocketAddress(0), 0);
+        controlApi.setExecutor(Executors.newCachedThreadPool());
+        controlApi.createContext("/chaos/control/scenarios/enable-only", exchange -> {
+            payloads.add(new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
+            switchCalls.incrementAndGet();
+            writeJson(exchange, 200, "{\"success\":true}");
+        });
+        controlApi.start();
+        try {
+            int port = controlApi.getAddress().getPort();
+            String yaml = """
+                    experiment:
+                      name: spring_phase_sync_ok
+                    load:
+                      virtualUsers: 1
+                      workerThreads: 1
+                    phases:
+                      - name: warmup
+                        type: WARMUP
+                        durationMs: 60
+                      - name: fault
+                        type: FAULT
+                        durationMs: 60
+                      - name: recovery
+                        type: RECOVERY
+                        durationMs: 60
+                    invariants:
+                      maxErrorRate: 1.0
+                    runtime:
+                      springControl:
+                        enabled: true
+                        baseUrl: http://localhost:%d
+                        failOnError: true
+                        disableAllAfterRun: true
+                        warmupScenarios: [default]
+                        faultScenarios: [stress]
+                        recoveryScenarios: [default]
+                    users:
+                      steps:
+                        - operation: stable
+                          successRate: 1.0
+                    """.formatted(port);
+
+            Path dslFile = Files.createTempFile("chaos-spring-sync-ok-", ".yaml");
+            Files.writeString(dslFile, yaml);
+
+            Path artifactsDir = Files.createTempDirectory("chaos-spring-sync-ok-artifacts-");
+            int exitCode = ChaosLibCli.execute(new String[]{
+                    "run",
+                    dslFile.toString(),
+                    "--artifacts-dir",
+                    artifactsDir.toString()
+            });
+
+            assertEquals(0, exitCode);
+            assertTrue(switchCalls.get() >= 4);
+            assertTrue(payloads.stream().anyMatch(body -> body.contains("\"names\":[\"default\"]")));
+            assertTrue(payloads.stream().anyMatch(body -> body.contains("\"names\":[\"stress\"]")));
+            assertTrue(payloads.stream().anyMatch(body -> body.contains("\"names\":[]")));
+
+            String metadata = Files.readString(artifactsDir.resolve("run-metadata.json"));
+            assertTrue(metadata.contains("\"springPhaseSync\""));
+            assertTrue(metadata.contains("\"errors\":[]"));
+        } finally {
+            controlApi.stop(0);
+        }
+    }
+
+    @Test
+    void testChaosLibCliSpringControlSyncFailOnErrorBlocksGateWhenUnavailable() throws Exception {
+        String yaml = """
+                experiment:
+                  name: spring_phase_sync_fail
+                load:
+                  virtualUsers: 1
+                  workerThreads: 1
+                phases:
+                  - name: fault
+                    type: FAULT
+                    durationMs: 100
+                invariants:
+                  maxErrorRate: 1.0
+                runtime:
+                  springControl:
+                    enabled: true
+                    baseUrl: http://localhost:65531
+                    timeoutMs: 200
+                    failOnError: true
+                    faultScenarios: [stress]
+                users:
+                  steps:
+                    - operation: stable
+                      successRate: 1.0
+                """;
+
+        Path dslFile = Files.createTempFile("chaos-spring-sync-fail-", ".yaml");
+        Files.writeString(dslFile, yaml);
+
+        Path reportFile = Files.createTempFile("chaos-spring-sync-fail-report-", ".json");
+        int exitCode = ChaosLibCli.execute(new String[]{
+                "run",
+                dslFile.toString(),
+                "--report",
+                reportFile.toString()
+        });
+
+        assertEquals(1, exitCode);
+        String reportJson = Files.readString(reportFile);
+        assertTrue(reportJson.contains("\"status\":\"FAIL\""));
+        assertTrue(reportJson.contains("spring_control_sync"));
+    }
+
     private static void writeJson(HttpExchange exchange, int status, String body) throws IOException {
         byte[] payload = body.getBytes(StandardCharsets.UTF_8);
         exchange.getResponseHeaders().add("Content-Type", "application/json");

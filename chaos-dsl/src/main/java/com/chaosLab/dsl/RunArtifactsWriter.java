@@ -80,7 +80,8 @@ final class RunArtifactsWriter {
             ChaosExperiment experiment,
             ExperimentReport report,
             List<PrometheusObservability.PrometheusCheckResult> prometheusChecks,
-            GrafanaObservability.GrafanaPublishResult grafanaResult
+            GrafanaObservability.GrafanaPublishResult grafanaResult,
+            SpringPhaseControlSync.PhaseSyncResult springPhaseSyncResult
     ) {
         Objects.requireNonNull(metadataPath, "metadataPath must not be null");
         Objects.requireNonNull(dslPath, "dslPath must not be null");
@@ -90,6 +91,7 @@ final class RunArtifactsWriter {
         Objects.requireNonNull(report, "report must not be null");
         Objects.requireNonNull(prometheusChecks, "prometheusChecks must not be null");
         Objects.requireNonNull(grafanaResult, "grafanaResult must not be null");
+        Objects.requireNonNull(springPhaseSyncResult, "springPhaseSyncResult must not be null");
 
         ChaosEngine faultEngine = experiment.getFaultEngine();
         Long faultSeed = faultEngine == null ? null : faultEngine.getRandomSeed();
@@ -115,6 +117,7 @@ final class RunArtifactsWriter {
         appendStringListField(json, "failedInvariants", failedInvariants).append(",");
         appendPrometheusChecksField(json, "prometheusChecks", prometheusChecks).append(",");
         appendGrafanaResultField(json, "grafanaAnnotations", grafanaResult).append(",");
+        appendSpringPhaseSyncField(json, "springPhaseSync", springPhaseSyncResult).append(",");
         appendNumberField(json, "executionErrorCount", report.getExecutionErrors().size());
         json.append("}");
 
@@ -232,6 +235,21 @@ final class RunArtifactsWriter {
         appendNumberField(json, "requested", grafanaResult.requested()).append(",");
         appendNumberField(json, "created", grafanaResult.annotationIds().size()).append(",");
         appendStringListField(json, "errors", grafanaResult.errors());
+        json.append("}");
+        return json;
+    }
+
+    private static StringBuilder appendSpringPhaseSyncField(
+            StringBuilder json,
+            String name,
+            SpringPhaseControlSync.PhaseSyncResult phaseSyncResult
+    ) {
+        json.append("\"").append(escape(name)).append("\":");
+        json.append("{");
+        appendNumberField(json, "requestedSwitches", phaseSyncResult.requestedSwitches()).append(",");
+        appendNumberField(json, "successfulSwitches", phaseSyncResult.successfulSwitches()).append(",");
+        appendStringListField(json, "errors", phaseSyncResult.errors()).append(",");
+        appendStringListField(json, "timeline", phaseSyncResult.timeline());
         json.append("}");
         return json;
     }

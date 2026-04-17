@@ -6,6 +6,7 @@ import com.chaosLab.ExperimentRegression;
 import com.chaosLab.ExperimentRegressionAnalyzer;
 import com.chaosLab.ChaosRunResult;
 import com.chaosLab.ChaosScenario;
+import com.chaosLab.ChaosScenarios;
 import com.chaosLab.ExperimentReport;
 import com.chaosLab.ExperimentReportJson;
 import com.chaosLab.PhaseType;
@@ -346,5 +347,38 @@ class ChaosTest {
                         new RegressionThresholds(0.01, 1000.0, 1.0)
                 )
         );
+    }
+
+    @Test
+    void testScenarioAliasesAndEnableOnlyControlApi() {
+        ChaosScenarios.clear();
+        try {
+            ChaosScenario defaultScenario = Chaos.builder()
+                    .delay(1).probability(0.0)
+                    .scenario("DefaultChaosScenario");
+            ChaosScenario stressScenario = Chaos.builder()
+                    .delay(1).probability(0.0)
+                    .scenario("stress");
+
+            ChaosScenarios.register(defaultScenario);
+            ChaosScenarios.register(stressScenario);
+
+            assertNotNull(ChaosScenarios.get("default"));
+            assertNotNull(ChaosScenarios.get("DefaultChaosScenario"));
+            assertNotNull(ChaosScenarios.get("StressChaos"));
+            assertNotNull(ChaosScenarios.get("stress"));
+
+            int affected = ChaosScenarios.enableOnly(List.of("default"));
+            assertEquals(2, affected);
+            assertTrue(defaultScenario.isEnabled());
+            assertFalse(stressScenario.isEnabled());
+
+            assertTrue(ChaosScenarios.disable("default"));
+            assertFalse(defaultScenario.isEnabled());
+            assertTrue(ChaosScenarios.enable("DefaultChaosScenario"));
+            assertTrue(defaultScenario.isEnabled());
+        } finally {
+            ChaosScenarios.clear();
+        }
     }
 }
