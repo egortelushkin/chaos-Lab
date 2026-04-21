@@ -25,6 +25,7 @@ dependencies {
     implementation(project(":chaos-spring-starter"))
     implementation(project(":chaos-core"))
     implementation(project(":chaos-spring"))
+    implementation(project(":chaos-dsl"))
 
     // OpenAPI
     implementation("org.springdoc:springdoc-openapi-starter-webmvc-ui:2.6.0")
