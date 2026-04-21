@@ -25,6 +25,17 @@ fault:
   mode: PARALLEL
   seed: 1337
 
+runtime:
+  springControl:
+    enabled: true
+    baseUrl: http://localhost:8080
+    timeoutMs: 3000
+    failOnError: true
+    disableAllAfterRun: true
+    warmupScenarios: [default]
+    faultScenarios: [stress]
+    recoveryScenarios: [default]
+
 invariants:
   maxErrorRate: 0.03
   maxP95LatencyMs: 800

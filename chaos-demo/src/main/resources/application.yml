@@ -2,6 +2,8 @@ server:
   port: 8080
 
 chaos:
+  control:
+    enabled: true
   scenarios:
     default:
       enabled: true

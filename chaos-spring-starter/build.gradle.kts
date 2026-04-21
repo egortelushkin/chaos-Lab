@@ -20,15 +20,14 @@ repositories {
 dependencies {
     // Spring Boot
     implementation("org.springframework.boot:spring-boot-starter-web")
-    implementation(project(":chaos-spring"))
-
-
     implementation(project(":chaos-core"))
     implementation(project(":chaos-spring"))
 
     // OpenAPI
     implementation("org.springdoc:springdoc-openapi-starter-webmvc-ui:2.6.0")
 
+    testImplementation(project(":chaos-dsl"))
+    testImplementation("org.springframework.boot:spring-boot-starter-test")
 
 }
 
