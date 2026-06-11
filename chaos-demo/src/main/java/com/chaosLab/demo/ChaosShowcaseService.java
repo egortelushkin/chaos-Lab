@@ -139,9 +139,9 @@ public class ChaosShowcaseService {
                     timeoutMs: 3000
                     failOnError: true
                     disableAllAfterRun: true
-                    warmupScenarios: [default]
-                    faultScenarios: [stress]
-                    recoveryScenarios: [default]
+                    warmupScenarios: [orders-create, orders-read]
+                    faultScenarios: [orders-payment]
+                    recoveryScenarios: [orders-create, orders-read]
 
                 invariants:
                   maxErrorRate: 0.40
@@ -152,8 +152,11 @@ public class ChaosShowcaseService {
                   steps:
                     - operation: %s
                       method: POST
-                      url: %s/orders?price=100
-                      successStatusCodes: [200]
+                      url: %s/orders
+                      headers:
+                        Content-Type: application/json
+                      body: '{"customerId":"demo-user","sku":"SKU-CHAOS","quantity":1,"unitPrice":100.00}'
+                      successStatusCodes: [201]
                       capture:
                         orderId: id
                     - operation: %s

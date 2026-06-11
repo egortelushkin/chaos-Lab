@@ -2,25 +2,30 @@ server:
   port: 8080
 
 chaos:
+  fail-on-missing-scenario: true
   control:
     enabled: true
   scenarios:
-    default:
+    orders-create:
       enabled: true
       delay:
-        probability: 0.3
-        max-ms: 500
+        probability: 0.20
+        max-ms: 250
       exception:
-        probability: 0.1
+        probability: 0.02
 
-    stress:
+    orders-read:
       enabled: true
       delay:
-        probability: 0.7
-        max-ms: 1500
+        probability: 0.10
+        max-ms: 150
       exception:
-        probability: 0.3
-      cpu-spike:
-        duration-ms: 200
-      memory-leak:
-        bytes: 5242880
+        probability: 0.01
+
+    orders-payment:
+      enabled: true
+      delay:
+        probability: 0.60
+        max-ms: 1200
+      exception:
+        probability: 0.20
